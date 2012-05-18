@@ -73,6 +73,16 @@
 		  (cond
 		   ((eq guessed-mode 'xml-mode)
 			(goto-char (point-min))
+			(while (search-forward-regexp "&#\\([0-9]+\\)[;\n]?" nil t)
+			  (let ((char-num (string-to-number (match-string 1))) decoded-str)
+				(setq decoded-str (char-to-string (if (fboundp 'decode-char)
+													  (decode-char 'ucs char-num)
+													(if (fboundp 'unibyte-char-to-multibyte)
+														(unibyte-char-to-multibyte char-num)))))
+				(delete-region (- (point) (length (match-string 0))) (point))
+				(insert decoded-str)))
+
+			(goto-char (point-min))
 			(while (search-forward-regexp "\>[ \\t]*\<" nil t)
 			  (backward-char) (insert "\n"))
 			(indent-region (point-min) (point-max)))
