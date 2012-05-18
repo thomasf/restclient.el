@@ -67,6 +67,7 @@
 		  (delete-region start (point))
 		  (unless (eq guessed-mode 'image-mode)
 			(apply guessed-mode '())
+			(set-buffer-multibyte t)
 			(font-lock-fontify-buffer))			
 		  
 		  (cond
