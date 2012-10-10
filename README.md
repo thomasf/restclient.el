@@ -20,11 +20,16 @@ and supports a few additional keypresses:
 Query file example:
 
 	# -*- restclient -*-
+    
+    PARAMS
+    useragent = Emacs24
+    twitter = api.twitter.com
+    
 	#
 	# Gets user timeline, formats JSON, shows response status and headers underneath
 	#
 	#
-	GET http://api.twitter.com/1/statuses/user_timeline.json?screen_name=twitterapi&count=2
+	GET http://{{twitter}}/1/statuses/user_timeline.json?screen_name=twitterapi&count=2
 	#
 	# XML is supported - highlight, pretty-print
 	#
@@ -38,7 +43,7 @@ Query file example:
 	# A bit of json GET, you can pass headers too
 	#
 	GET http://jira.atlassian.com/rest/api/latest/issue/JRA-9
-	User-Agent: Emacs24
+	User-Agent: {{useragent}}
 	Accept-Encoding: application/xml
 
 	#

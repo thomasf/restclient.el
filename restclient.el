@@ -11,6 +11,7 @@
 ;; This file is public domain software. Do what you want.
 
 (require 'url)
+(require 'cl)
 (require 'json-reformat)
 
 (defcustom restclient-same-buffer-response t
@@ -136,27 +137,79 @@
 		(point-at-bol)
 	  (point-max))))
 
+(defconst restclient-params-regexp
+  "^\\(PARAMS\\)$")
+
+(defconst restclient-param-val-regexp
+  "^\\([^ \\=]+\\) *= *\\(.*\\)$")
+
+(defun restclient-trim-string (string)
+  "Remove white spaces in beginning and ending of STRING.
+White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
+  (replace-regexp-in-string "\\`[ \t\n]*" "" (replace-regexp-in-string "[ \t\n]*\\'" "" string)))
+
+(defun restclient-find-params ()
+  (save-excursion
+    (goto-char (point-min))
+    (if (re-search-forward restclient-params-regexp nil 't)
+        (progn
+          (forward-line)
+          (let ((properties (make-hash-table)))
+            (while (string-match ".*=.*" (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
+              (let ((key-val (split-string (buffer-substring-no-properties (line-beginning-position) (line-end-position)) "=")))
+                (puthash (restclient-trim-string (car key-val))
+                         (restclient-trim-string (cadr key-val))
+                         properties))
+              (forward-line))
+            properties))
+      (make-hash-table))))
+
+(defun restclient-string-replace (this withthat in)
+  "replace THIS with WITHTHAT' in the string IN"
+  (with-temp-buffer
+    (insert in)
+    (goto-char (point-min))
+    (while (search-forward this nil t)
+      (replace-match withthat nil t))
+    (buffer-substring (point-min) (point-max))))
+
+(defun restclient-replace-params (params str)
+  (lexical-let ((temp-str str))
+    (maphash (lambda (key value)
+               (setq temp-str
+                     (restclient-string-replace (concat "{{" key "}}")
+                                                value
+                                                temp-str
+                                                )))
+             params)
+    temp-str))
 
 ;;;###autoload
 (defun restclient-http-send-current (&optional raw)
   (interactive)
   (goto-char (restclient-current-min))
   (save-excursion
-	(when (re-search-forward restclient-method-url-regexp (point-max) t)
-	  (let ((method (buffer-substring-no-properties (match-beginning 1) (match-end 1)))
-			(url (buffer-substring-no-properties (match-beginning 2) (match-end 2)))
-			(headers '()))
-			(forward-line)
-			(while (re-search-forward restclient-header-regexp (point-at-eol) t)
-			  (setq headers (cons (cons (buffer-substring-no-properties (match-beginning 1) (match-end 1))
-										(buffer-substring-no-properties (match-beginning 2) (match-end 2)))
-								  headers))
-			  (forward-line))
-			(when (looking-at "^\\s-*$")
-			  (forward-line))
-			(let ((entity (buffer-substring (point) (restclient-current-max))))
-			  (message "HTTP %s %s Headers:[%s] Body:[%s]" method url headers entity)
-			  (restclient-http-do method url headers entity raw))))))
+    (when (re-search-forward restclient-method-url-regexp (point-max) t)
+      (let* ((begin (match-beginning 1))
+             (end (match-end 1))
+             (begin2 (match-beginning 2))
+             (end2 (match-end 2))
+             (params (restclient-find-params))
+             (method (buffer-substring-no-properties begin end))
+             (url (restclient-replace-params params (buffer-substring-no-properties begin2 end2)))
+             (headers '()))
+        (forward-line)
+        (while (re-search-forward restclient-header-regexp (point-at-eol) t)
+          (setq headers (cons
+                         (cons (restclient-replace-params params (buffer-substring-no-properties (match-beginning 1) (match-end 1)))
+                               (restclient-replace-params params (buffer-substring-no-properties (match-beginning 2) (match-end 2))))
+                              headers))
+          (forward-line))
+        (when (looking-at "^\\s-*$")
+          (forward-line))
+        (let ((entity (buffer-substring (point) (restclient-current-max))))
+          (message "HTTP %s %s Headers:[%s] Body:[%s]" method url headers entity)
+          (restclient-http-do method url headers entity raw))))))
 
 ;;;###autoload
 (defun restclient-http-send-current-raw ()
@@ -164,10 +217,12 @@
   (restclient-http-send-current t))
 
 (setq restclient-mode-keywords
-	  (list (list restclient-method-url-regexp '(1 font-lock-keyword-face) '(2 font-lock-function-name-face))
-			(list restclient-header-regexp '(1 font-lock-variable-name-face) '(2 font-lock-string-face))
-
-			))
+      (list
+       (list restclient-method-url-regexp '(1 font-lock-keyword-face) '(2 font-lock-function-name-face))
+       (list restclient-header-regexp '(1 font-lock-variable-name-face) '(2 font-lock-string-face))
+       (list restclient-params-regexp '(1 font-lock-keyword-face))
+       (list restclient-param-val-regexp '(1 font-lock-variable-name-face) '(2 font-lock-string-face))
+       ))
 
 (defvar restclient-mode-syntax-table
   (let ((table (make-syntax-table)))
